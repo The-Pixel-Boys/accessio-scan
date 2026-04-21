@@ -1,0 +1,44 @@
+# Dependabot keeps runtime + build-time dependencies current without
+# manual intervention. Weekly cadence is busy enough to surface known
+# CVEs quickly but quiet enough not to drown maintainer review.
+#
+# groups:
+#   prod-deps — runtime bumps (axe-core, playwright, commander, chalk,
+#               zod). Reviewed carefully; a breaking change here can
+#               change scan output.
+#   dev-deps  — typescript, vitest, @types/*. Safe to batch.
+
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: '/'
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      prod-deps:
+        dependency-type: production
+      dev-deps:
+        dependency-type: development
+    labels:
+      - dependencies
+    commit-message:
+      prefix: chore
+      include: scope
+
+  # GitHub-hosted actions. Not subject to lock files — Dependabot keeps
+  # the SHA pins current. Pair with the "pin to commit SHA" policy in
+  # .github/workflows/publish.yml so upstream compromises stay bounded.
+  - package-ecosystem: github-actions
+    directory: '/'
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - ci
+    commit-message:
+      prefix: ci
+      include: scope

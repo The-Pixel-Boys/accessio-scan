@@ -37,10 +37,11 @@ accessio-scan <url> [options]
 Options:
   -f, --format <type>              output format: console | json | sarif  (default: console)
   -o, --output <file>              write output to a file instead of stdout
+  --force                          overwrite --output file if it already exists
   -t, --telemetry                  opt in to anonymized telemetry
   --telemetry-endpoint <url>       override the telemetry endpoint (advanced)
   --timeout <ms>                   page load timeout in milliseconds        (default: 30000)
-  --wait-for <selector>            wait for a CSS selector before scanning
+  --wait-for <selector>            wait for a CSS selector before scanning  (max 1000 chars)
   -V, --version
   -h, --help
 ```

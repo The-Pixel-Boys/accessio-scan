@@ -9,7 +9,7 @@
  */
 
 import { Command } from 'commander';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -29,6 +29,7 @@ const packageJson = JSON.parse(
 interface CliOptions {
   format: OutputFormat;
   output?: string;
+  force: boolean;
   telemetry: boolean;
   telemetryEndpoint?: string;
   timeout: string;
@@ -36,6 +37,13 @@ interface CliOptions {
 }
 
 const VALID_FORMATS: readonly OutputFormat[] = ['console', 'json', 'sarif'];
+
+// Playwright selector length cap. Normal CSS/xpath selectors are far
+// under 200 chars; 1000 is comfortable headroom while still shutting
+// down pathological inputs (ReDoS-adjacent attacks on the selector
+// parser, extreme memory blowups) when library consumers forward
+// user input without their own bound.
+const MAX_SELECTOR_LENGTH = 1_000;
 
 async function main(): Promise<void> {
   const program = new Command();
@@ -47,6 +55,7 @@ async function main(): Promise<void> {
     .argument('<url>', 'URL to scan (must include protocol, e.g. https://example.com)')
     .option('-f, --format <type>', 'output format: console | json | sarif', 'console')
     .option('-o, --output <file>', 'write output to a file instead of stdout')
+    .option('--force', 'overwrite --output file if it already exists', false)
     .option('-t, --telemetry', 'opt in to anonymized telemetry (hashed hostname + rule counts only)', false)
     .option('--telemetry-endpoint <url>', 'override the telemetry endpoint (advanced)')
     .option('--timeout <ms>', 'page load timeout in milliseconds', '30000')
@@ -73,6 +82,27 @@ async function run(url: string, options: CliOptions): Promise<void> {
   const timeoutMs = Number.parseInt(options.timeout, 10);
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
     process.stderr.write(`Error: --timeout must be a positive integer (got "${options.timeout}").\n`);
+    process.exit(2);
+  }
+
+  // Cap selector length before it reaches Playwright. Also protects
+  // downstream library consumers who forward user input without
+  // validating bounds themselves.
+  if (options.waitFor && options.waitFor.length > MAX_SELECTOR_LENGTH) {
+    process.stderr.write(
+      `Error: --wait-for selector is ${options.waitFor.length} chars; max is ${MAX_SELECTOR_LENGTH}.\n`,
+    );
+    process.exit(2);
+  }
+
+  // Refuse to clobber an existing file unless --force. Default CLI
+  // convention varies; we pick safe-by-default because a typo'd -o
+  // can otherwise overwrite anything the user's process can write
+  // (system config, source files, etc.).
+  if (options.output && existsSync(options.output) && !options.force) {
+    process.stderr.write(
+      `Error: "${options.output}" already exists. Re-run with --force to overwrite.\n`,
+    );
     process.exit(2);
   }
 
