@@ -93,6 +93,20 @@ describe('uploadTelemetry', () => {
     expect(outcome.error).toBeTruthy();
   });
 
+  it.each([
+    'file:///etc/passwd',
+    'javascript:alert(1)',
+    'data:,hello',
+    'gopher://example.com/',
+    'chrome://settings',
+    'not-a-url-at-all',
+    '',
+  ])('rejects non-http scheme: %s', async (endpoint) => {
+    const outcome = await uploadTelemetry(RESULT, endpoint);
+    expect(outcome.uploaded).toBe(false);
+    expect(outcome.error).toMatch(/http:\/\/ or https:\/\//);
+  });
+
   it('returns uploaded:true on 2xx', async () => {
     const server = await startEchoServer(200);
     try {

@@ -78,6 +78,8 @@ Emit a [SARIF 2.1.0][sarif] report and upload it to GitHub Code Scanning for inl
     sarif_file: a11y.sarif
 ```
 
+> **Warning — SARIF contains raw page HTML.** Each reported violation includes the offending element's outer HTML in `snippet.text` so GitHub Code Scanning can render inline annotations. If your scanned page embeds PII, authentication tokens, or internal identifiers in its DOM, that content lands in the repo's Security tab and is visible to anyone with read access. Scan public URLs, or strip sensitive content before scanning.
+
 [sarif]: https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html
 
 ### Wait for dynamic content
@@ -140,6 +142,14 @@ If Chromium is already installed on CI:
 ```bash
 PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install accessio-scan
 ```
+
+## Security notes
+
+**Do not scan untrusted URLs from inside a privileged network.** accessio-scan launches a real browser and navigates to whatever URL you give it. If you run it on a CI runner that sits inside a VPC, an untrusted URL can reach internal services (metadata endpoints, Redis, admin panels) and the resulting page content may end up in your report.
+
+**The Chromium sandbox is enabled by default.** If you get "Running as root without --no-sandbox is not supported" inside a Docker container, set `ACCESSIO_SCAN_UNSAFE_DISABLE_SANDBOX=1` — but only in trusted CI, never on a developer machine. The environment variable is deliberately verbose so nobody sets it accidentally.
+
+**`--telemetry-endpoint` is restricted to `http://` and `https://`.** `file://`, `data:`, and other schemes are rejected to keep the flag from being abused as an SSRF primitive when CI configs ingest untrusted input.
 
 ## Limitations
 

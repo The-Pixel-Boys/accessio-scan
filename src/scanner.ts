@@ -33,11 +33,28 @@ export async function scan(options: ScanOptions): Promise<ScanResult> {
   let browser: Browser | null = null;
 
   try {
+    // The Chromium sandbox is a critical defense: if axe-core's JS (or the
+    // scanned page) ever triggers a Chromium exploit, the sandbox keeps it
+    // contained to the browser process. We ONLY disable it when the caller
+    // explicitly opts in via ACCESSIO_SCAN_UNSAFE_DISABLE_SANDBOX=1, which
+    // is the escape hatch for root-in-Docker CI setups that can't get
+    // namespace privileges. The env var name is deliberately loud.
+    const unsafeNoSandbox = process.env.ACCESSIO_SCAN_UNSAFE_DISABLE_SANDBOX === '1';
+    if (unsafeNoSandbox) {
+      process.stderr.write(
+        'accessio-scan: WARNING — Chromium sandbox disabled via ACCESSIO_SCAN_UNSAFE_DISABLE_SANDBOX. ' +
+          'Only use this in trusted CI; never on developer machines.\n',
+      );
+    }
+
     browser = await chromium.launch({
       headless: true,
-      // Keep args minimal — Playwright's defaults are already sensible.
-      // Users who need proxy or custom CA config should fork the runner.
-      args: ['--no-sandbox', '--disable-dev-shm-usage'],
+      args: [
+        // --disable-dev-shm-usage avoids /dev/shm running out in tiny
+        // CI containers; not a security toggle.
+        '--disable-dev-shm-usage',
+        ...(unsafeNoSandbox ? ['--no-sandbox'] : []),
+      ],
     });
 
     const context = await browser.newContext({

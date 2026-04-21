@@ -59,6 +59,18 @@ export async function uploadTelemetry(
   result: ScanResult,
   endpoint: string | null,
 ): Promise<{ uploaded: boolean; error?: string }> {
+  const url = endpoint ?? DEFAULT_ENDPOINT;
+
+  // Reject everything that isn't http(s). Blocks file:// (arbitrary file
+  // read on some runtimes), data:// (no-op but noisy), javascript://
+  // (ignored by fetch but still a foot-gun), plus chrome://, gopher://,
+  // etc. Primary attack scenario: an attacker who controls a user's CI
+  // config passes --telemetry-endpoint pointing at a non-HTTP scheme to
+  // probe the local filesystem or trigger unexpected fetch behaviour.
+  if (!isHttpUrl(url)) {
+    return { uploaded: false, error: 'telemetry endpoint must use http:// or https://' };
+  }
+
   const payload = buildPayload(result);
 
   // Validate before shipping — catches our own bugs before they hit the wire.
@@ -67,7 +79,6 @@ export async function uploadTelemetry(
     return { uploaded: false, error: `payload validation failed: ${parsed.error.message}` };
   }
 
-  const url = endpoint ?? DEFAULT_ENDPOINT;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
 
@@ -96,5 +107,14 @@ function safeHostname(url: string): string {
     // Pathological: user passed a non-URL that somehow made it through
     // validation. Hash the raw string so we still get a stable key.
     return url;
+  }
+}
+
+function isHttpUrl(raw: string): boolean {
+  try {
+    const parsed = new URL(raw);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
   }
 }
