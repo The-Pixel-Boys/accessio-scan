@@ -42,6 +42,4 @@ export interface ScanOptions {
   url: string;
   timeoutMs: number;
   waitForSelector: string | null;
-  telemetryEnabled: boolean;
-  telemetryEndpoint: string | null;
 }

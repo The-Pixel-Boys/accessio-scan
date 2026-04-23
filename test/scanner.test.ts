@@ -23,8 +23,6 @@ describe('scan', () => {
       url: fixtureUrl('accessible.html'),
       timeoutMs: 10_000,
       waitForSelector: null,
-      telemetryEnabled: false,
-      telemetryEndpoint: null,
     });
 
     expect(result.violationCount).toBe(0);
@@ -39,8 +37,6 @@ describe('scan', () => {
       url: fixtureUrl('broken.html'),
       timeoutMs: 10_000,
       waitForSelector: null,
-      telemetryEnabled: false,
-      telemetryEndpoint: null,
     });
 
     expect(result.violationCount).toBeGreaterThan(0);

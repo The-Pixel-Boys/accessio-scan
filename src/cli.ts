@@ -110,8 +110,6 @@ async function run(url: string, options: CliOptions): Promise<void> {
     url: parsedUrl,
     timeoutMs,
     waitForSelector: options.waitFor ?? null,
-    telemetryEnabled: options.telemetry,
-    telemetryEndpoint: options.telemetryEndpoint ?? null,
   });
 
   const output = render(result, options.format);
