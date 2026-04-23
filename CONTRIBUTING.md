@@ -11,7 +11,7 @@ If your change is larger — new rulesets, crawling, authentication, dashboards 
 ## Local setup
 
 ```bash
-git clone https://github.com/accessio-ai/accessio-scan.git
+git clone https://github.com/The-Pixel-Boys/accessio-scan.git
 cd accessio-scan
 npm install
 npx playwright install chromium

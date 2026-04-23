@@ -58,7 +58,7 @@ export async function scan(options: ScanOptions): Promise<ScanResult> {
     });
 
     const context = await browser.newContext({
-      userAgent: `accessio-scan/${packageJson.version} (+https://github.com/accessio-ai/accessio-scan)`,
+      userAgent: `accessio-scan/${packageJson.version} (+https://github.com/The-Pixel-Boys/accessio-scan)`,
       // Common viewport so responsive issues show consistently across runs.
       viewport: { width: 1280, height: 720 },
     });

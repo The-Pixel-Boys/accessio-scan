@@ -79,7 +79,7 @@ export function formatSarif(result: ScanResult): string {
           driver: {
             name: 'accessio-scan',
             version: result.toolVersion,
-            informationUri: 'https://github.com/accessio-ai/accessio-scan',
+            informationUri: 'https://github.com/The-Pixel-Boys/accessio-scan',
             rules,
           },
         },
