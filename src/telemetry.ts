@@ -18,6 +18,17 @@ import type { ScanResult } from './types.js';
 const DEFAULT_ENDPOINT = 'https://service.accessio.ai/v1/telemetry/scan';
 const UPLOAD_TIMEOUT_MS = 5_000;
 
+// Caps are duplicated on the server side (accessio-service
+// ScanTelemetryRequest.java); keep both in lockstep or a CLI release
+// will start failing with HTTP 400 on valid-looking payloads. The
+// server rejects at the boundary, but silently building a payload here
+// that the server will refuse is a worse experience than failing loudly
+// before the upload attempt.
+const MAX_COUNT_PER_RULE = 100_000;
+const MAX_VIOLATIONS_PER_PAYLOAD = 200;
+const MAX_TAGS_PER_VIOLATION = 40;
+const MAX_TAG_LENGTH = 60;
+
 const TelemetryPayloadSchema = z.object({
   hostHash: z.string().length(64),
   scanner: z.literal('accessio-scan'),
@@ -28,10 +39,10 @@ const TelemetryPayloadSchema = z.object({
     z.object({
       ruleId: z.string().max(100),
       impact: z.enum(['critical', 'serious', 'moderate', 'minor']),
-      count: z.number().int().nonnegative(),
-      tags: z.array(z.string().max(60)).max(40),
+      count: z.number().int().nonnegative().max(MAX_COUNT_PER_RULE),
+      tags: z.array(z.string().max(MAX_TAG_LENGTH)).max(MAX_TAGS_PER_VIOLATION),
     }),
-  ),
+  ).max(MAX_VIOLATIONS_PER_PAYLOAD),
 });
 
 export type TelemetryPayload = z.infer<typeof TelemetryPayloadSchema>;

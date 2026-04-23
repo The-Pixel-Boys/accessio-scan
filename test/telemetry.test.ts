@@ -86,6 +86,46 @@ describe('buildPayload', () => {
   });
 });
 
+describe('uploadTelemetry schema caps mirror the server', () => {
+  // These tests pin the client-side schema against the server-side caps
+  // in accessio-service ScanTelemetryRequest.java. If one side changes
+  // without the other, these fail loud instead of silently 400-ing in
+  // production.
+
+  it('rejects count > 100_000 (server @Max(100_000))', async () => {
+    const huge: ScanResult = {
+      ...RESULT,
+      violations: [
+        {
+          ...RESULT.violations[0],
+          nodes: Array.from({ length: 100_001 }, () => ({
+            target: ['x'],
+            html: '<x />',
+            failureSummary: 'x',
+          })),
+        },
+      ],
+    };
+    const outcome = await uploadTelemetry(huge, 'https://example.test/');
+    expect(outcome.uploaded).toBe(false);
+    expect(outcome.error).toMatch(/payload validation failed/);
+  });
+
+  it('rejects more than 200 violations (server @Size(max=200))', async () => {
+    const base = RESULT.violations[0];
+    const huge: ScanResult = {
+      ...RESULT,
+      violations: Array.from({ length: 201 }, (_, i) => ({
+        ...base,
+        ruleId: `rule-${i}`,
+      })),
+    };
+    const outcome = await uploadTelemetry(huge, 'https://example.test/');
+    expect(outcome.uploaded).toBe(false);
+    expect(outcome.error).toMatch(/payload validation failed/);
+  });
+});
+
 describe('uploadTelemetry', () => {
   it('returns uploaded:false with a descriptive error on network failure', async () => {
     const outcome = await uploadTelemetry(RESULT, 'http://127.0.0.1:1/does-not-exist');
