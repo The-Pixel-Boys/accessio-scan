@@ -2,11 +2,17 @@
 # manual intervention. Weekly cadence is busy enough to surface known
 # CVEs quickly but quiet enough not to drown maintainer review.
 #
+# Policy: we accept minor + patch bumps automatically, but MAJOR bumps
+# are always done manually with a test pass because they are almost
+# always breaking. An earlier auto-grouped major bump of typescript /
+# vitest / @types/node simultaneously blew up CI (PR #6, closed
+# unmerged) — hence the explicit ignore list below.
+#
 # groups:
 #   prod-deps — runtime bumps (axe-core, playwright, commander, chalk,
 #               zod). Reviewed carefully; a breaking change here can
 #               change scan output.
-#   dev-deps  — typescript, vitest, @types/*. Safe to batch.
+#   dev-deps  — typescript, vitest, @types/*. Safe to batch at minor+patch.
 
 version: 2
 updates:
@@ -19,8 +25,20 @@ updates:
     groups:
       prod-deps:
         dependency-type: production
+        update-types:
+          - minor
+          - patch
       dev-deps:
         dependency-type: development
+        update-types:
+          - minor
+          - patch
+    # Block major-version bumps entirely — they land as individual PRs
+    # we handle manually, not as a grouped surprise.
+    ignore:
+      - dependency-name: '*'
+        update-types:
+          - version-update:semver-major
     labels:
       - dependencies
     commit-message:
