@@ -18,6 +18,11 @@ import { formatConsole } from './formatters/console.js';
 import { formatJson } from './formatters/json.js';
 import { formatSarif } from './formatters/sarif.js';
 import { uploadTelemetry } from './telemetry.js';
+import {
+  shouldFail,
+  VALID_FAIL_ON,
+  type FailOnImpact,
+} from './threshold.js';
 import type { OutputFormat } from './types.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -34,9 +39,11 @@ interface CliOptions {
   telemetryEndpoint?: string;
   timeout: string;
   waitFor?: string;
+  failOn: FailOnImpact;
 }
 
 const VALID_FORMATS: readonly OutputFormat[] = ['console', 'json', 'sarif'];
+
 
 // Playwright selector length cap. Normal CSS/xpath selectors are far
 // under 200 chars; 1000 is comfortable headroom while still shutting
@@ -60,6 +67,12 @@ async function main(): Promise<void> {
     .option('--telemetry-endpoint <url>', 'override the telemetry endpoint (advanced)')
     .option('--timeout <ms>', 'page load timeout in milliseconds', '30000')
     .option('--wait-for <selector>', 'wait for a CSS selector before scanning')
+    .option(
+      '--fail-on <level>',
+      'exit non-zero only when a violation at this impact (or higher) is found. ' +
+        'One of: none | any | minor | moderate | serious | critical. Default: any.',
+      'any',
+    )
     .action(async (url: string, options: CliOptions) => {
       await run(url, options);
     });
@@ -70,6 +83,13 @@ async function main(): Promise<void> {
 async function run(url: string, options: CliOptions): Promise<void> {
   if (!VALID_FORMATS.includes(options.format)) {
     process.stderr.write(`Error: invalid format "${options.format}". Must be one of: ${VALID_FORMATS.join(', ')}\n`);
+    process.exit(2);
+  }
+
+  if (!VALID_FAIL_ON.includes(options.failOn)) {
+    process.stderr.write(
+      `Error: invalid --fail-on "${options.failOn}". Must be one of: ${VALID_FAIL_ON.join(', ')}\n`,
+    );
     process.exit(2);
   }
 
@@ -130,8 +150,11 @@ async function run(url: string, options: CliOptions): Promise<void> {
     }
   }
 
-  // Exit 1 iff violations found → lets CI pipelines gate on the exit code.
-  process.exit(result.violationCount > 0 ? 1 : 0);
+  // Exit code is the CI-gate signal. The historical default ('any') exits 1
+  // whenever any violation is present. Severity-aware thresholds let teams
+  // adopt the gate gradually — e.g. start with `--fail-on critical`, ratchet
+  // down as the codebase cleans up.
+  process.exit(shouldFail(result, options.failOn) ? 1 : 0);
 }
 
 function render(result: Parameters<typeof formatConsole>[0], format: OutputFormat): string {

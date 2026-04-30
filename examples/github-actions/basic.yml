@@ -1,0 +1,42 @@
+# Example workflow: run accessio-scan against a deployed preview URL on
+# every pull request, fail the build on serious + critical violations,
+# upload the SARIF report to GitHub code-scanning.
+#
+# Drop this in .github/workflows/accessibility.yml in your own repo and
+# replace ${{ env.PREVIEW_URL }} with however you compute the preview
+# URL (Vercel preview, Netlify deploy, custom staging, etc.).
+
+name: Accessibility
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  accessio-scan:
+    runs-on: ubuntu-latest
+
+    permissions:
+      # Required for the SARIF upload to land on the security tab.
+      security-events: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Replace this with your real preview-URL step. Vercel, Netlify,
+      # Cloudflare Pages, and Render all expose the URL via env or
+      # action output — wire that to PREVIEW_URL.
+      - name: Resolve preview URL
+        id: preview
+        run: echo "url=https://example.com" >> "$GITHUB_OUTPUT"
+
+      - name: Run accessibility scan
+        uses: The-Pixel-Boys/accessio-scan/.github/actions/scan@main
+        with:
+          url: ${{ steps.preview.outputs.url }}
+          fail-on: serious
+          format: sarif
+          # Wait for your app's hydration sentinel before scanning. Skip
+          # this on static sites.
+          wait-for: '#__next, [data-hydrated]'
