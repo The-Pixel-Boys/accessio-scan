@@ -1,0 +1,154 @@
+name: 'Accessio Accessibility Scan'
+description: 'Run accessio-scan against a URL in CI. Fails the build on WCAG violations at or above the configured impact threshold.'
+author: 'Accessio.AI'
+branding:
+  icon: 'check-circle'
+  color: 'blue'
+
+inputs:
+  url:
+    description: 'Target URL to scan. Supports http(s) only.'
+    required: true
+  fail-on:
+    description: 'Impact threshold that fails the build. One of: none | any | minor | moderate | serious | critical. "any" matches the CLI default; "serious" is the recommended starting point for new adopters.'
+    required: false
+    default: 'serious'
+  format:
+    description: 'Output format. One of: console, json, sarif.'
+    required: false
+    default: 'sarif'
+  output-file:
+    description: 'Path to write the report to. Defaults to "accessio-scan-results.{format}" in the workspace root.'
+    required: false
+    default: ''
+  wait-for:
+    description: 'CSS selector that must be present before the scan starts (e.g. "#app", ".loaded"). Useful for SPAs.'
+    required: false
+    default: ''
+  timeout:
+    description: 'Page-load timeout in milliseconds.'
+    required: false
+    default: '30000'
+  node-version:
+    description: 'Node.js version to use.'
+    required: false
+    default: '20'
+  upload-sarif:
+    description: 'Upload the SARIF report to GitHub code-scanning. Only honoured when format is sarif. Requires the calling workflow to have security-events: write permission.'
+    required: false
+    default: 'true'
+  artifact-name:
+    description: 'Name of the workflow artifact to upload the report under. Set to empty string to skip artifact upload.'
+    required: false
+    default: 'accessio-scan-report'
+  version:
+    description: 'accessio-scan npm version to install. Defaults to "latest". Pin to a specific version (e.g. "0.1.0") for reproducible builds.'
+    required: false
+    default: 'latest'
+
+outputs:
+  exit-code:
+    description: 'Raw exit code from accessio-scan. 0 = no violations at-or-above threshold, 1 = violations found, 2 = scanner error.'
+    value: ${{ steps.scan.outputs.exit-code }}
+  report-path:
+    description: 'Absolute path to the report file that was written.'
+    value: ${{ steps.scan.outputs.report-path }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    # Cache the Playwright browser bundle. accessio-scan ships its own
+    # Playwright dependency; the bundle is ~150 MB and is the slowest part
+    # of a cold cache (15-30 s on a fresh runner). Versioned cache key
+    # busts the cache when accessio-scan ships a new Playwright pin.
+    - name: Cache Playwright browsers
+      id: playwright-cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/ms-playwright
+        key: ${{ runner.os }}-playwright-${{ inputs.version }}-v1
+        restore-keys: |
+          ${{ runner.os }}-playwright-
+
+    - name: Install accessio-scan + Playwright
+      shell: bash
+      run: |
+        set -euo pipefail
+        npm install -g "accessio-scan@${{ inputs.version }}"
+        # Playwright requires a separate browser-binary install. Idempotent
+        # — re-runs return immediately when the cache hit above restored
+        # the bundle. We pin to chromium because that's the only browser
+        # the scanner targets.
+        npx --yes playwright@1 install --with-deps chromium
+
+    - name: Run accessio-scan
+      id: scan
+      shell: bash
+      env:
+        ACCESSIO_URL: ${{ inputs.url }}
+        ACCESSIO_FAIL_ON: ${{ inputs.fail-on }}
+        ACCESSIO_FORMAT: ${{ inputs.format }}
+        ACCESSIO_OUTPUT_FILE: ${{ inputs.output-file }}
+        ACCESSIO_WAIT_FOR: ${{ inputs.wait-for }}
+        ACCESSIO_TIMEOUT: ${{ inputs.timeout }}
+      run: |
+        set -uo pipefail
+        # Resolve the report path. Default lives in $GITHUB_WORKSPACE so
+        # the upload-artifact step downstream finds it without juggling
+        # working directories.
+        if [ -z "${ACCESSIO_OUTPUT_FILE}" ]; then
+          report_path="${GITHUB_WORKSPACE}/accessio-scan-results.${ACCESSIO_FORMAT}"
+        else
+          report_path="${ACCESSIO_OUTPUT_FILE}"
+        fi
+        echo "report-path=${report_path}" >> "$GITHUB_OUTPUT"
+
+        # Build the CLI arg vector. --force makes the CLI overwrite an
+        # existing report file; --fail-on is forwarded directly to the CLI
+        # which owns the threshold logic (see src/threshold.ts).
+        args=(
+          --format "${ACCESSIO_FORMAT}"
+          --output "${report_path}"
+          --fail-on "${ACCESSIO_FAIL_ON}"
+          --timeout "${ACCESSIO_TIMEOUT}"
+          --force
+        )
+        if [ -n "${ACCESSIO_WAIT_FOR}" ]; then
+          args+=(--wait-for "${ACCESSIO_WAIT_FOR}")
+        fi
+
+        # Capture exit code without aborting; we still want the artifact
+        # + SARIF upload steps below to fire on failure.
+        set +e
+        accessio-scan "${ACCESSIO_URL}" "${args[@]}"
+        code=$?
+        set -e
+        echo "exit-code=${code}" >> "$GITHUB_OUTPUT"
+        exit "${code}"
+
+    # Always upload the report — even when the scan failed. The artifact
+    # is the primary way to see "what broke" without re-running locally.
+    - name: Upload report artifact
+      if: ${{ always() && inputs.artifact-name != '' && steps.scan.outputs.report-path != '' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ steps.scan.outputs.report-path }}
+        if-no-files-found: warn
+        retention-days: 30
+
+    # SARIF upload pipes findings into the GitHub code-scanning UI on the
+    # security tab. Only fires when format=sarif AND the calling workflow
+    # has security-events:write — github/codeql-action handles the latter
+    # gracefully (warns if it can't write).
+    - name: Upload SARIF to code-scanning
+      if: ${{ always() && inputs.upload-sarif == 'true' && inputs.format == 'sarif' && steps.scan.outputs.report-path != '' }}
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: ${{ steps.scan.outputs.report-path }}
+        category: accessio-scan
